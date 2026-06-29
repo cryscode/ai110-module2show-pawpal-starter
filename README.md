@@ -72,14 +72,16 @@ Sample test output:
 
 ## 📐 Smarter Scheduling
 
-> Fill in once you've implemented scheduling logic.
-
 | Feature | Method(s) | Notes |
 |---------|-----------|-------|
-| Task sorting | | e.g., by priority, duration |
-| Filtering | | e.g., skip tasks if time runs out |
-| Conflict handling | | e.g., overlapping time slots |
-| Recurring tasks | | e.g., daily vs. weekly |
+| Task sorting | `Scheduler.sortTasks()`, `Scheduler.sort_by_time()` | `sortTasks()` orders by priority then start time; `sort_by_time()` orders chronologically then priority |
+| Filtering | `Scheduler.filterTasks(completed, pet_name)` | Filters by completion status, by pet, or both; either argument is optional |
+| Skip tasks if time runs out | `Scheduler.filterByTimeAvailable()` | Greedy priority-order walk; drops tasks once the owner's available hours are exhausted |
+| Conflict detection | `Scheduler.detectConflicts()` | Flags overlapping task pairs as "same pet" or "owner time" conflicts; returns warning strings |
+| Conflict resolution | `Scheduler.handleConflicts()` | Pushes overlapping blocks forward so the schedule stays contiguous; called automatically by `generateSchedule()` |
+| Recurring tasks | `Task.isRecurring()`, `Task.getNextOccurrence()`, `Task.markComplete()` | `isRecurring()` checks cadence; `getNextOccurrence()` computes the next datetime (daily/weekly/monthly); `markComplete()` returns a fresh copy advanced by one period |
+| Recurring auto-requeue | `Owner.completeTask(taskTitle)` | Removes the completed task and re-adds the next occurrence so the to-do list stays stocked |
+| Schedule generation | `Scheduler.generateSchedule(dayHours)` | Combines filtering, slot-packing, and conflict resolution into one call |
 
 ## 📸 Demo Walkthrough
 

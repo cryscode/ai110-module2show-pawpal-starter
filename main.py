@@ -45,13 +45,14 @@ print(f"getInfo — Mochi:\n{mochi.getInfo()}")
 # ── Task ───────────────────────────────────────────────────
 section("TASK — create tasks, inspect properties")
 
+# Tasks intentionally added OUT OF ORDER (by time) to test sorting
 morning_walk = Task(
     title="Morning Walk",
     durationMinutes=60,
     priority=1,
     description="30-min walk around the block",
     recurrence="daily",
-    startHour=7,
+    startTime="07:00",
     appliesTo=[luna],
 )
 
@@ -61,7 +62,7 @@ feeding = Task(
     priority=1,
     description="Breakfast for Luna and Mochi",
     recurrence="daily",
-    startHour=8,
+    startTime="08:00",
     appliesTo=[luna, mochi],
 )
 
@@ -71,7 +72,7 @@ vet_checkup = Task(
     priority=2,
     description="Annual wellness exam",
     recurrence="once",
-    startHour=10,
+    startTime="10:00",
     appliesTo=[mochi],
 )
 
@@ -81,7 +82,7 @@ grooming = Task(
     priority=3,
     description="Brush coat and trim nails",
     recurrence="weekly",
-    startHour=14,
+    startTime="14:00",
     appliesTo=[luna],
 )
 
@@ -91,7 +92,7 @@ evening_feeding = Task(
     priority=1,
     description="Dinner for Luna and Mochi",
     recurrence="daily",
-    startHour=18,
+    startTime="18:00",
     appliesTo=[luna, mochi],
 )
 
@@ -101,7 +102,7 @@ medication_check = Task(
     priority=2,
     description="Give Luna her allergy pill",
     recurrence="daily",
-    startHour=9,
+    startTime="09:00",
     appliesTo=[luna],
 )
 
@@ -111,7 +112,7 @@ playtime = Task(
     priority=3,
     description="Interactive toy session with both pets",
     recurrence="daily",
-    startHour=15,
+    startTime="15:00",
     appliesTo=[luna, mochi],
 )
 
@@ -160,7 +161,7 @@ bonus_task = Task(
     priority=3,
     description="Quick rinse and dry",
     recurrence="weekly",
-    startHour=11,
+    startTime="11:00",
     appliesTo=[luna],
 )
 scheduler.addTask(bonus_task)
@@ -169,11 +170,62 @@ print(f"addTask 'Bath Time': scheduler now has {len(scheduler.tasks)} tasks")
 scheduler.removeTask("Bath Time")
 print(f"removeTask 'Bath Time': scheduler now has {len(scheduler.tasks)} tasks")
 
-# sortTasks
+# ── NEW: sort_by_time ─────────────────────────────────────
+# Tasks were added out of order above; sort_by_time re-orders them
+# chronologically using the HH:MM string as the sort key.
+#
+# Why does sorting "HH:MM" strings work?
+#   Python's sorted() compares strings character-by-character.
+#   Because times are zero-padded ("07:00" not "7:00"),
+#   lexicographic order == chronological order:
+#     "07:00" < "08:00" < "09:00" < ... < "18:00"
+#   The lambda passes (startTime, priority) so same-time tasks
+#   are broken by priority (1 = highest urgency first).
+section("SORT — sort_by_time() by HH:MM string, then priority")
+
+print("Tasks in original (out-of-order) state:")
+for t in scheduler.tasks:
+    status = "done" if t.isCompleted else "pending"
+    print(f"  [{t.startTime}] priority={t.priority}  {t.title:<22} ({status})")
+
 print()
-print("sortTasks (by priority then startHour):")
+print("After sort_by_time()  →  sorted(tasks, key=lambda t: (t.startTime, t.priority)):")
+for t in scheduler.sort_by_time():
+    status = "done" if t.isCompleted else "pending"
+    print(f"  [{t.startTime}] priority={t.priority}  {t.title:<22} ({status})")
+
+# ── NEW: filterTasks ──────────────────────────────────────
+section("FILTER — filterTasks(completed, pet_name)")
+
+print("filterTasks(completed=False)  →  pending tasks only:")
+for t in scheduler.filterTasks(completed=False):
+    print(f"  {t.title:<22} done={t.isCompleted}")
+
+print()
+print("filterTasks(completed=True)   →  completed tasks only:")
+for t in scheduler.filterTasks(completed=True):
+    print(f"  {t.title:<22} done={t.isCompleted}")
+
+print()
+print("filterTasks(pet_name='Luna')  →  Luna's tasks only:")
+for t in scheduler.filterTasks(pet_name="Luna"):
+    print(f"  {t.title:<22} pets={[p.name for p in t.appliesTo]}")
+
+print()
+print("filterTasks(pet_name='Mochi') →  Mochi's tasks only:")
+for t in scheduler.filterTasks(pet_name="Mochi"):
+    print(f"  {t.title:<22} pets={[p.name for p in t.appliesTo]}")
+
+print()
+print("filterTasks(completed=False, pet_name='Luna')  →  Luna's pending tasks:")
+for t in scheduler.filterTasks(completed=False, pet_name="Luna"):
+    print(f"  {t.title:<22} priority={t.priority}")
+
+# ── sortTasks (existing method) ───────────────────────────
+print()
+print("sortTasks() — priority first, then time, then duration desc:")
 for t in scheduler.sortTasks():
-    print(f"  priority={t.priority} | {t.startHour:02d}:00 | {t.title}")
+    print(f"  priority={t.priority} | [{t.startTime}] | {t.title}")
 
 # filterByTimeAvailable
 print()
@@ -216,7 +268,7 @@ header = (
     f"{'PRIORITY':<{col['priority']}}"
 )
 print(header)
-print("─" * len(header))
+print("-" * len(header))
 
 for s in sorted(scheduler.schedule, key=lambda s: s.startTime):
     print(
@@ -226,3 +278,42 @@ for s in sorted(scheduler.schedule, key=lambda s: s.startTime):
         f"{str(s.task.durationMinutes) + ' min':<{col['duration']}}"
         f"{priority_label.get(s.task.priority, 'Unknown'):<{col['priority']}}"
     )
+
+# ── CONFLICT DETECTION ────────────────────────────────────
+section("CONFLICT DETECTION — detectConflicts()")
+
+# Same-pet conflict: both tasks involve Luna and start at 07:00
+morning_medication = Task(
+    title="Morning Medication",
+    durationMinutes=10,
+    priority=1,
+    description="Give Luna her allergy pill with breakfast",
+    recurrence="daily",
+    startTime="07:00",
+    appliesTo=[luna],
+)
+
+# Owner-time conflict: different pets but overlaps Morning Walk (07:00–08:00)
+mochi_breakfast = Task(
+    title="Mochi Breakfast",
+    durationMinutes=30,
+    priority=1,
+    description="Wet food for Mochi",
+    recurrence="daily",
+    startTime="07:30",
+    appliesTo=[mochi],
+)
+
+conflict_scheduler = Scheduler(owner=crystal, pets=[luna, mochi])
+conflict_scheduler.addTask(morning_walk)       # 07:00–08:00, Luna
+conflict_scheduler.addTask(morning_medication) # 07:00–07:10, Luna  → same-pet conflict
+conflict_scheduler.addTask(mochi_breakfast)    # 07:30–08:00, Mochi → owner-time conflict
+conflict_scheduler.addTask(feeding)            # 08:00–08:15, Luna+Mochi (no conflict)
+
+warnings = conflict_scheduler.detectConflicts()
+print(f"Tasks loaded: {len(conflict_scheduler.tasks)}")
+print(f"Conflicts found: {len(warnings)}\n")
+for w in warnings:
+    print(f"  {w}")
+if not warnings:
+    print("  (no conflicts)")

@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 
 
@@ -36,13 +36,16 @@ class Owner:
         """Add a task to the owner's master task list."""
         self.tasks.append(task)
 
-    def completeTask(self, taskTitle: str) -> None:
-        """Mark a task as completed and remove it from the task list."""
+    def completeTask(self, taskTitle: str) -> Optional[Task]:
+        """Mark a task as completed; re-add the next occurrence if recurring."""
         for task in self.tasks:
             if task.title == taskTitle:
-                task.markComplete()
+                next_task = task.markComplete()
                 self.tasks.remove(task)
-                return
+                if next_task:
+                    self.tasks.append(next_task)
+                return next_task
+        return None
 
     def getTodoList(self) -> List[Task]:
         """Return all pending (incomplete) tasks."""
@@ -87,12 +90,27 @@ class Task:
     description: str
     isCompleted: bool = False
     recurrence: str = ""
-    startHour: int = 0
+    startTime: str = "00:00"
+    dueDate: Optional[datetime] = None
     appliesTo: List[Pet] = field(default_factory=list)
 
-    def markComplete(self) -> None:
-        """Mark this task as completed."""
+    def markComplete(self) -> Optional["Task"]:
+        """Mark this task as completed; return the next occurrence for daily/weekly tasks."""
         self.isCompleted = True
+        if not self.isRecurring():
+            return None
+
+        base = self.dueDate if self.dueDate else datetime.now()
+        recurrence_lower = self.recurrence.lower()
+
+        if "daily" in recurrence_lower:
+            next_due = base + timedelta(days=1)
+        elif "weekly" in recurrence_lower:
+            next_due = base + timedelta(weeks=1)
+        else:
+            return None
+
+        return replace(self, isCompleted=False, dueDate=next_due)
 
     def getPriority(self) -> int:
         """Return the numeric priority level of this task."""
@@ -108,30 +126,31 @@ class Task:
 
     def getNextOccurrence(self) -> datetime:
         """Calculate and return the next scheduled occurrence of this task."""
-        from datetime import timedelta
         now = datetime.now()
 
+        hour, minute = (int(x) for x in self.startTime.split(":"))
+
         if not self.isRecurring():
-            return now.replace(hour=self.startHour, minute=0, second=0, microsecond=0)
+            return now.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
         recurrence_lower = self.recurrence.lower()
         if "daily" in recurrence_lower:
-            next_time = now.replace(hour=self.startHour, minute=0, second=0, microsecond=0)
+            next_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
             if next_time <= now:
                 next_time += timedelta(days=1)
         elif "weekly" in recurrence_lower:
-            next_time = now.replace(hour=self.startHour, minute=0, second=0, microsecond=0)
+            next_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
             if next_time <= now:
                 next_time += timedelta(weeks=1)
         elif "monthly" in recurrence_lower:
-            next_time = now.replace(hour=self.startHour, minute=0, second=0, microsecond=0, day=1)
+            next_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0, day=1)
             if next_time <= now:
                 if now.month == 12:
                     next_time = next_time.replace(year=now.year + 1, month=1)
                 else:
                     next_time = next_time.replace(month=now.month + 1)
         else:
-            next_time = now.replace(hour=self.startHour, minute=0, second=0, microsecond=0)
+            next_time = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
         return next_time
 
@@ -177,8 +196,29 @@ class Scheduler:
         """Return tasks sorted by priority and other scheduling criteria."""
         return sorted(
             self.tasks,
-            key=lambda t: (t.getPriority(), t.startHour, -t.durationMinutes)
+            key=lambda t: (t.getPriority(), t.startTime, -t.durationMinutes)
         )
+
+    def sort_by_time(self) -> List[Task]:
+        """Return tasks sorted by scheduled time (HH:MM string), then by priority.
+
+        HH:MM strings are zero-padded, so lexicographic order == chronological order:
+          "07:00" < "08:30" < "14:00" — no datetime parsing needed.
+        """
+        return sorted(self.tasks, key=lambda t: (t.startTime, t.priority))
+
+    def filterTasks(
+        self,
+        completed: Optional[bool] = None,
+        pet_name: Optional[str] = None,
+    ) -> List[Task]:
+        """Filter tasks by completion status and/or the name of the pet they apply to."""
+        result = self.tasks
+        if completed is not None:
+            result = [t for t in result if t.isCompleted == completed]
+        if pet_name is not None:
+            result = [t for t in result if any(p.name == pet_name for p in t.appliesTo)]
+        return result
 
     def filterByTimeAvailable(self) -> List[Task]:
         """Return only the tasks that fit within the owner's available hours."""
@@ -249,6 +289,39 @@ class Scheduler:
 
         self.handleConflicts()
         return self.schedule
+
+    def detectConflicts(self) -> List[str]:
+        """Return warning messages for any tasks whose time windows overlap.
+
+        Two tasks conflict when their [start, start+duration) intervals intersect.
+        Same-pet overlaps are flagged as pet conflicts; different-pet overlaps are
+        flagged as owner-time conflicts (the owner can only do one thing at a time).
+        Returns an empty list when no conflicts exist — never raises.
+        """
+        from itertools import combinations
+
+        def _parse(task: Task):
+            h, m = task.startTime.split(":")
+            start = int(h) * 60 + int(m)
+            return start, start + task.durationMinutes
+
+        def fmt(minutes: int) -> str:
+            return f"{minutes // 60:02d}:{minutes % 60:02d}"
+
+        parsed = [(task, *_parse(task)) for task in self.tasks]
+        warnings: List[str] = []
+
+        for (a, start_a, end_a), (b, start_b, end_b) in combinations(parsed, 2):
+
+            if start_a < end_b and start_b < end_a:
+                shared = {p.name for p in a.appliesTo} & {p.name for p in b.appliesTo}
+                kind = f"same pet — {', '.join(sorted(shared))}" if shared else "owner time"
+                warnings.append(
+                    f"[CONFLICT — {kind}] '{a.title}' and '{b.title}' "
+                    f"overlap ({a.startTime}-{fmt(end_a)} vs {b.startTime}-{fmt(end_b)})"
+                )
+
+        return warnings
 
     def explainSchedule(self) -> str:
         """Return a human-readable explanation of the generated schedule."""
