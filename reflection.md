@@ -3,14 +3,31 @@
 ## 1. System Design
 
 **a. Initial design**
+Core actions
+Add a task
+Schedule tasks ahead
+Have a to-do list with constreaints taken into account
+Track tasks to ensure pet is healthy
 
 - Briefly describe your initial UML design.
 - What classes did you include, and what responsibilities did you assign to each?
+Classes
+Owner: Manages preferences for pet care
+Pet: Represents the pet with species and special needs
+Task: Individual care tasks with priority and duration
+Scheduler: Orchestrates the planning, taking an owner and pet(s), consuming tasks, and generating a daily schedule
 
 **b. Design changes**
 
 - Did your design change during implementation?
-- If yes, describe at least one change and why you made it.
+- If yes, describe at least one change and why you made it.\
+No Owner-Pet binding — The Scheduler references both owner (singular) and pets (list), but there's no way to know which pets belong to which owner.
+
+Task doesn't reference which Pet it's for — A task like "feed dog" or "give medication" must apply to a specific pet (or pets), but Task has no pets field. This makes scheduling and filtering nearly impossible — how does the scheduler know if a task is relevant?
+
+ScheduledTask doesn't track the Pet — Even though Task is scheduled, you lose context about which pet it serves. The output would be unhelpful: "Feed at 10am" without knowing which animal.
+
+ScheduledTask.reasoning vs Scheduler.getReasoningFor() — Both store/return reasoning. Why not just read ScheduledTask.reasoning directly instead of having a lookup method?
 
 ---
 

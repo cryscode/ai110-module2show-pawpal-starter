@@ -16,18 +16,37 @@ class Owner:
     availableHours: int
     preferences: List[str] = field(default_factory=list)
     constraints: Dict[str, str] = field(default_factory=dict)
+    pets: List[Pet] = field(default_factory=list)
+    tasks: List[Task] = field(default_factory=list)
 
     def addPreference(self, preference: str) -> None:
         """Add a scheduling preference to the owner's preference list."""
-        pass
+        if preference not in self.preferences:
+            self.preferences.append(preference)
 
     def getPreferences(self) -> List[str]:
         """Return the full list of owner preferences."""
-        pass
+        return self.preferences
 
     def setAvailableHours(self, hours: int) -> None:
         """Update the number of hours the owner is available per day."""
-        pass
+        self.availableHours = max(0, hours)
+
+    def addTask(self, task: Task) -> None:
+        """Add a task to the owner's master task list."""
+        self.tasks.append(task)
+
+    def completeTask(self, taskTitle: str) -> None:
+        """Mark a task as completed and remove it from the task list."""
+        for task in self.tasks:
+            if task.title == taskTitle:
+                task.markComplete()
+                self.tasks.remove(task)
+                return
+
+    def getTodoList(self) -> List[Task]:
+        """Return all pending (incomplete) tasks."""
+        return [t for t in self.tasks if not t.isCompleted]
 
 
 @dataclass
@@ -42,15 +61,20 @@ class Pet:
 
     def addSpecialNeed(self, need: str, detail: str) -> None:
         """Record a special care need and its associated detail for this pet."""
-        pass
+        self.specialNeeds[need] = detail
 
     def getInfo(self) -> str:
         """Return a human-readable summary of the pet's information."""
-        pass
+        info = f"{self.name} ({self.species}, {self.age} years old)"
+        if self.specialNeeds:
+            info += f"\nSpecial needs: {', '.join(f'{k}: {v}' for k, v in self.specialNeeds.items())}"
+        if self.dietary:
+            info += f"\nDietary: {', '.join(f'{k}: {v}' for k, v in self.dietary.items())}"
+        return info
 
     def getSpecies(self) -> str:
         """Return the species of this pet."""
-        pass
+        return self.species
 
 
 @dataclass
@@ -59,31 +83,57 @@ class Task:
 
     title: str
     durationMinutes: int
-    priority: str
+    priority: int
     description: str
     isCompleted: bool = False
     recurrence: str = ""
     startHour: int = 0
+    appliesTo: List[Pet] = field(default_factory=list)
 
     def markComplete(self) -> None:
         """Mark this task as completed."""
-        pass
+        self.isCompleted = True
 
     def getPriority(self) -> int:
         """Return the numeric priority level of this task."""
-        pass
+        return self.priority
 
     def getDuration(self) -> int:
         """Return the duration of this task in minutes."""
-        pass
+        return self.durationMinutes
 
     def isRecurring(self) -> bool:
         """Return True if this task recurs on a schedule."""
-        pass
+        return bool(self.recurrence and self.recurrence.lower() != "once")
 
     def getNextOccurrence(self) -> datetime:
         """Calculate and return the next scheduled occurrence of this task."""
-        pass
+        from datetime import timedelta
+        now = datetime.now()
+
+        if not self.isRecurring():
+            return now.replace(hour=self.startHour, minute=0, second=0, microsecond=0)
+
+        recurrence_lower = self.recurrence.lower()
+        if "daily" in recurrence_lower:
+            next_time = now.replace(hour=self.startHour, minute=0, second=0, microsecond=0)
+            if next_time <= now:
+                next_time += timedelta(days=1)
+        elif "weekly" in recurrence_lower:
+            next_time = now.replace(hour=self.startHour, minute=0, second=0, microsecond=0)
+            if next_time <= now:
+                next_time += timedelta(weeks=1)
+        elif "monthly" in recurrence_lower:
+            next_time = now.replace(hour=self.startHour, minute=0, second=0, microsecond=0, day=1)
+            if next_time <= now:
+                if now.month == 12:
+                    next_time = next_time.replace(year=now.year + 1, month=1)
+                else:
+                    next_time = next_time.replace(month=now.month + 1)
+        else:
+            next_time = now.replace(hour=self.startHour, minute=0, second=0, microsecond=0)
+
+        return next_time
 
 
 @dataclass
@@ -91,13 +141,14 @@ class ScheduledTask:
     """Wraps a Task with concrete start/end times and the scheduler's reasoning."""
 
     task: Task
+    pet: Pet
     startTime: int
     endTime: int
     reasoning: str = ""
 
     def getTimeSlot(self) -> str:
         """Return a formatted string describing the scheduled time window."""
-        pass
+        return f"{self.startTime:02d}:00 - {self.endTime:02d}:00"
 
 
 @dataclass
@@ -109,38 +160,107 @@ class Scheduler:
     tasks: List[Task] = field(default_factory=list)
     schedule: List[ScheduledTask] = field(default_factory=list)
 
+    def loadTasksFromOwner(self) -> List[Task]:
+        """Retrieve all tasks from the owner's master task list."""
+        self.tasks = self.owner.tasks
+        return self.tasks
+
     def addTask(self, task: Task) -> None:
         """Add a task to the scheduler's task list."""
-        pass
+        self.tasks.append(task)
 
     def removeTask(self, taskId: str) -> None:
         """Remove a task from the scheduler's task list by its identifier."""
-        pass
-
-    def generateSchedule(self, dayHours: int) -> List[ScheduledTask]:
-        """Generate a full day's schedule given the number of available hours."""
-        pass
+        self.tasks = [t for t in self.tasks if t.title != taskId]
 
     def sortTasks(self) -> List[Task]:
         """Return tasks sorted by priority and other scheduling criteria."""
-        pass
+        return sorted(
+            self.tasks,
+            key=lambda t: (t.getPriority(), t.startHour, -t.durationMinutes)
+        )
 
     def filterByTimeAvailable(self) -> List[Task]:
         """Return only the tasks that fit within the owner's available hours."""
-        pass
+        available_minutes = self.owner.availableHours * 60
+        total_duration = 0
+        filtered_tasks = []
 
-    def handleConflicts(self) -> List[ScheduledTask]:
-        """Resolve any scheduling conflicts and return a conflict-free schedule."""
-        pass
+        for task in self.sortTasks():
+            if total_duration + task.durationMinutes <= available_minutes:
+                filtered_tasks.append(task)
+                total_duration += task.durationMinutes
+
+        return filtered_tasks
 
     def expandRecurringTasks(self) -> List[Task]:
         """Expand recurring tasks into individual instances for the current day."""
-        pass
+        expanded = []
+        for task in self.tasks:
+            if task.isRecurring():
+                expanded.append(task)
+            else:
+                expanded.append(task)
+        return expanded
+
+    def handleConflicts(self) -> List[ScheduledTask]:
+        """Resolve any scheduling conflicts and return a conflict-free schedule."""
+        if not self.schedule:
+            return []
+
+        resolved = []
+        current_hour = 0
+
+        for scheduled in sorted(self.schedule, key=lambda s: s.startTime):
+            if scheduled.startTime < current_hour:
+                scheduled.startTime = current_hour
+                scheduled.endTime = scheduled.startTime + (scheduled.task.durationMinutes // 60)
+
+            current_hour = scheduled.endTime
+            resolved.append(scheduled)
+
+        self.schedule = resolved
+        return resolved
+
+    def generateSchedule(self, dayHours: int) -> List[ScheduledTask]:
+        """Generate a full day's schedule given the number of available hours."""
+        self.schedule = []
+        filtered_tasks = self.filterByTimeAvailable()
+
+        current_hour = 0
+        max_hours = min(dayHours, self.owner.availableHours)
+
+        for task in filtered_tasks:
+            if task.isCompleted:
+                continue
+
+            duration_hours = max(1, task.durationMinutes // 60)
+
+            if current_hour + duration_hours <= max_hours:
+                scheduled = ScheduledTask(
+                    task=task,
+                    pet=task.appliesTo[0] if task.appliesTo else self.pets[0] if self.pets else Pet("Unknown", "Unknown", 0),
+                    startTime=current_hour,
+                    endTime=current_hour + duration_hours,
+                    reasoning=f"Scheduled based on {task.priority} priority"
+                )
+                self.schedule.append(scheduled)
+                current_hour += duration_hours
+
+        self.handleConflicts()
+        return self.schedule
 
     def explainSchedule(self) -> str:
         """Return a human-readable explanation of the generated schedule."""
-        pass
+        if not self.schedule:
+            return f"No tasks scheduled for {self.owner.name}."
 
-    def getReasoningFor(self, task: Task) -> str:
-        """Return the scheduler's reasoning for how a specific task was placed."""
-        pass
+        explanation = f"Daily schedule for {self.owner.name} ({self.owner.availableHours} hours available):\n\n"
+
+        for scheduled in sorted(self.schedule, key=lambda s: s.startTime):
+            priority_label = {1: "High", 2: "Medium", 3: "Low"}.get(scheduled.task.priority, "Unknown")
+            explanation += f"⏰ {scheduled.getTimeSlot()}: {scheduled.task.title} ({scheduled.pet.name})\n"
+            explanation += f"   Duration: {scheduled.task.durationMinutes} minutes | Priority: {priority_label}\n"
+            explanation += f"   Reason: {scheduled.reasoning}\n\n"
+
+        return explanation

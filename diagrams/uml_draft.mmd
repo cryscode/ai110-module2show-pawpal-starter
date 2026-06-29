@@ -4,6 +4,7 @@ classDiagram
         +List~string~ preferences
         +int availableHours
         +string~string~ constraints
+        +List~Pet~ pets
         +addPreference(preference: string) void
         +getPreferences() List~string~
         +setAvailableHours(hours: int) void
@@ -28,6 +29,7 @@ classDiagram
         +boolean isCompleted
         +string recurrence
         +int startHour
+        +List~Pet~ appliesTo
         +markComplete() void
         +getPriority() int
         +getDuration() int
@@ -37,6 +39,7 @@ classDiagram
 
     class ScheduledTask {
         +Task task
+        +Pet pet
         +int startTime
         +int endTime
         +string reasoning
@@ -56,7 +59,6 @@ classDiagram
         +handleConflicts() List~ScheduledTask~
         +expandRecurringTasks() List~Task~
         +explainSchedule() string
-        +getReasoningFor(task: Task) string
     }
 
     Owner "1" --> "1..*" Pet : owns
@@ -65,3 +67,5 @@ classDiagram
     Scheduler "1" --> "0..*" Task : manages
     Scheduler "1" --> "0..*" ScheduledTask : generates
     ScheduledTask "1" --> "1" Task : wraps
+    Task "1..*" --> "1..*" Pet : applies to
+    ScheduledTask "1" --> "1" Pet : scheduled for
