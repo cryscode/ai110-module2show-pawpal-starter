@@ -1,0 +1,67 @@
+classDiagram
+    class Owner {
+        +string name
+        +List~string~ preferences
+        +int availableHours
+        +string~string~ constraints
+        +addPreference(preference: string) void
+        +getPreferences() List~string~
+        +setAvailableHours(hours: int) void
+    }
+
+    class Pet {
+        +string name
+        +string species
+        +int age
+        +string~string~ specialNeeds
+        +string~string~ dietary
+        +addSpecialNeed(need: string, detail: string) void
+        +getInfo() string
+        +getSpecies() string
+    }
+
+    class Task {
+        +string title
+        +int durationMinutes
+        +string priority
+        +string description
+        +boolean isCompleted
+        +string recurrence
+        +int startHour
+        +markComplete() void
+        +getPriority() int
+        +getDuration() int
+        +isRecurring() boolean
+        +getNextOccurrence() DateTime
+    }
+
+    class ScheduledTask {
+        +Task task
+        +int startTime
+        +int endTime
+        +string reasoning
+        +getTimeSlot() string
+    }
+
+    class Scheduler {
+        +Owner owner
+        +List~Pet~ pets
+        +List~Task~ tasks
+        +List~ScheduledTask~ schedule
+        +addTask(task: Task) void
+        +removeTask(taskId: string) void
+        +generateSchedule(dayHours: int) List~ScheduledTask~
+        +sortTasks() List~Task~
+        +filterByTimeAvailable() List~Task~
+        +handleConflicts() List~ScheduledTask~
+        +expandRecurringTasks() List~Task~
+        +explainSchedule() string
+        +getReasoningFor(task: Task) string
+    }
+
+    Owner "1" --> "1..*" Pet : owns
+    Scheduler "1" --> "1" Owner : plans for
+    Scheduler "1" --> "1..*" Pet : schedules care for
+    Scheduler "1" --> "0..*" Task : manages
+    Scheduler "1" --> "0..*" ScheduledTask : generates
+    ScheduledTask "1" --> "1" Task : wraps
