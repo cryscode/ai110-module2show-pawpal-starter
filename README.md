@@ -56,19 +56,41 @@ Paste a sample of your app's CLI or Streamlit output here so a reader can see wh
 
 ## 🧪 Testing PawPal+
 
-```bash
-# Run the full test suite:
-pytest
+Run the full test suite from the project root:
 
-# Run with coverage:
-pytest --cov
+```bash
+python -m pytest tests/test_pawpal.py -v
 ```
+
+All 59 tests are in `tests/test_pawpal.py` and cover the following behaviors:
+
+| Area | What is tested |
+|---|---|
+| **Sorting** (`sortTasks`, `sort_by_time`) | High-priority tasks come before low-priority; ties broken by start time then duration; neither method mutates the original list |
+| **Recurrence** (`Task.markComplete`) | Daily tasks produce a next occurrence due exactly one day later; weekly tasks advance by one week; `once` tasks return `None`; the returned task has `isCompleted=False`; casing variants like `"DAILY"` are handled |
+| **Conflict detection** (`detectConflicts`) | Exact and partial overlaps are flagged; same-pet conflicts name the pet; different-pet overlaps are labelled as owner-time conflicts; adjacent (non-overlapping) tasks are not flagged |
+| **Owner task management** (`completeTask`, `getTodoList`) | Completing a once task removes it; completing a daily task replaces it with the next occurrence; unknown titles return `None` safely; `getTodoList` excludes completed tasks |
+| **Schedule generation** (`generateSchedule`) | Tasks appear in sequence; a 30-minute task occupies a 1-hour slot (due to `max(1, duration//60)` rounding); completed tasks are skipped; schedule is capped at `min(dayHours, owner.availableHours)` |
+| **Capacity filtering** (`filterByTimeAvailable`) | Tasks too long to fit alone are dropped; high-priority tasks are kept when capacity runs out; zero available hours returns an empty list |
+| **Task filtering** (`filterTasks`) | Filter by completion status, by pet name, or both combined; no filters returns all tasks |
+| **Task removal** (`removeTask`) | Removes only the matching task; other tasks are unchanged; nonexistent titles and empty lists do not raise |
 
 Sample test output:
 
 ```
-# Paste your pytest output here
+========================================= test session starts ==========================================
+platform win32 -- Python 3.14.3, pytest-9.1.1, pluggy-1.6.0
+rootdir: C:\Users\adike\Documents\CODEPATH\ai110-module2show-pawpal-starter
+plugins: anyio-4.14.1
+collected 59 items                                                                                      
+
+tests\test_pawpal.py ...........................................................                  [100%]
+
+========================================== 59 passed in 0.61s ==========================================
 ```
+
+Confidence Level
+4
 
 ## 📐 Smarter Scheduling
 
